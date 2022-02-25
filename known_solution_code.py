@@ -68,6 +68,20 @@ def elliptic_proj(u_vec, u, w, phi, sol_w, psi, v, div_v = None):
     
     return sol_w
 
+## Initial condition guess for v
+def v_init(u_vec, psi, w, v):
+    a = dot(u_vec, w)*dx
+    #print("doing this", flush = True)
+    L = - psi * div(w)*dx
+    try:
+        solve(a==L,v,solver_parameters=prm)
+    except RuntimeError:
+        # if error we switch to mumps
+        prm["linear_solver"] = 'mumps'
+        solve(a==L,v,solver_parameters=prm)
+        prm["linear_solver"] = 'gmres'
+    return v
+
 
 # mesh creation with MPI to allow for parallelization of computations 
 n_el =  16
@@ -111,6 +125,9 @@ v_dot = Function(Hdiv)
 v = Function(Hdiv, name="v")
 v_pred = Function(Hdiv)
 
+trial_v = TrialFunction(Hdiv)
+test_v = TestFunction(Hdiv)
+
 set_log_level(30)
 
 
@@ -152,12 +169,15 @@ vdot_ref = Expression(('amp*w*l*cos(w*t)*cos(l*x[0])*sin(l*x[1])', 'amp*w*l*cos(
 div_v = Expression(('-2*amp*l*l*sin(w*t)*sin(l*x[0])*sin(l*x[1])'), amp=amp, l=l, w=w_ex, t=t, degree = degree)
 div_vdot = Expression(('-2*w*amp*l*l*cos(w*t)*sin(l*x[0])*sin(l*x[1])'), amp=amp, l=l, w=w_ex, t=t, degree = degree)
 
+
+
 ## Initial conditions
-v_dot, psi_dot = elliptic_proj(u_vec, u, w, phi, sol_w, psi_dot_ref, vdot_ref, div_vdot).split(deepcopy=True)
+v_dot= v_init(trial_v, psi_dot_ref, test_v, v_dot)
+v_dot, psi_dot = elliptic_proj(u_vec, u, w, phi, sol_w, psi_dot_ref, v_dot).split(deepcopy=True)
 
 ## If v, psi not zero one can approximate their initial condition by uncommenting the line below
-
-# (v, psi) = elliptic_proj(u_vec, u, w, phi, sol_w, psi_ref, v_ref, div_v).split(deepcopy=True)
+# v= v_init(trial_v, psi_ref, test_v, v)
+# (v, psi) = elliptic_proj(u_vec, u, w, phi, sol_w, psi_ref, v).split(deepcopy=True)
 
 f = Expression('amp*((2*c*c*l*l-w*w)*sin(w*t)+2*w*l*l*b*cos(w*t))*sin(l*x[0])*sin(l*x[1])+amp*amp*w*cos(w*t)*sin(w*t)*(w*w*k*sin(l*x[0])*sin(l*x[0])*sin(l*x[1])*sin(l*x[1])-l*l*s*cos(l*x[0])*cos(l*x[0])*sin(l*x[1])*sin(l*x[1]) - l*l*s*cos(l*x[1])*cos(l*x[1])*sin(l*x[0])*sin(l*x[0]))', amp=amp, l=l, w=w_ex, k=k, s=s,b=b,c=c, t=t, degree=degree)
 
